@@ -1,26 +1,149 @@
-
 <!DOCTYPE html>
 <html lang="pt-br">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>IndusTrack Pro</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-    <!-- Uso da versão bundle que já inclui html2canvas e jsPDF -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-  <script type="importmap">
-{
-  "imports": {
-    "recharts": "https://esm.sh/recharts@^3.6.0",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/"
-  }
-}
-</script>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IndusTrack Pro</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    #chartContainer { height: 300px; width: 100%; }
+  </style>
 </head>
-  <body class="bg-gray-100 min-h-screen">
-    <div id="root"></div>
-  </body>
+<body class="bg-gray-100 min-h-screen p-6">
+  <div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <header class="text-center mb-8">
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">IndusTrack Pro</h1>
+      <p class="text-xl text-gray-600">Monitoramento Industrial em Tempo Real</p>
+    </header>
+
+    <!-- Controles -->
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-2">Dados de Produção (JSON):</label>
+        <textarea id="dataInput" rows="4" class="w-full p-3 border border-gray-300 rounded-lg resize-vertical focus:ring-2 focus:ring-blue-500" placeholder='[{"hora":"08:00","produzido":120,"defeitos":5},{"hora":"09:00","produzido":150,"defeitos":3}]'></textarea>
+        <button onclick="atualizarDashboard()" class="mt-3 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+          <i class="fas fa-sync-alt mr-2"></i>Atualizar
+        </button>
+      </div>
+      <div>
+        <button onclick="exportarPDF()" class="w-full p-4 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center justify-center">
+          <i class="fas fa-download mr-2"></i>Exportar PDF
+        </button>
+        <button onclick="limparDados()" class="w-full mt-3 p-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition">
+          <i class="fas fa-trash mr-2"></i>Limpar
+        </button>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="grid lg:grid-cols-2 gap-6">
+      <!-- Gráfico Principal -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+        <h2 class="text-2xl font-semibold mb-4 flex items-center"><i class="fas fa-chart-line text-blue-600 mr-2"></i>Produção por Hora</h2>
+        <canvas id="producaoChart" class="chartContainer"></canvas>
+      </div>
+
+      <!-- Métricas -->
+      <div class="bg-white p-6 rounded-xl shadow-lg">
+        <h2 class="text-2xl font-semibold mb-6 flex items-center"><i class="fas fa-chart-bar text-green-600 mr-2"></i>Métricas</h2>
+        <div class="space-y-4">
+          <div class="flex justify-between text-2xl font-bold">
+            <span>Total Produzido</span>
+            <span id="totalProduzido" class="text-blue-600">0</span>
+          </div>
+          <div class="flex justify-between text-2xl font-bold">
+            <span>Total Defeitos</span>
+            <span id="totalDefeitos" class="text-red-600">0</span>
+          </div>
+          <div class="flex justify-between text-2xl font-bold">
+            <span>Taxa de Defeito</span>
+            <span id="taxaDefeito" class="text-purple-600">0%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let chart;
+
+    function atualizarDashboard() {
+      const dadosJSON = document.getElementById('dataInput').value;
+      let dados;
+      
+      try {
+        dados = JSON.parse(dadosJSON);
+      } catch(e) {
+        alert('Erro no JSON. Use formato: [{"hora":"08:00","produzido":120,"defeitos":5}]');
+        return;
+      }
+
+      // Atualizar métricas
+      const totalProduzido = dados.reduce((sum, item) => sum + item.produzido, 0);
+      const totalDefeitos = dados.reduce((sum, item) => sum + item.defeitos, 0);
+      const taxaDefeito = totalProduzido > 0 ? ((totalDefeitos / totalProduzido) * 100).toFixed(1) : 0;
+
+      document.getElementById('totalProduzido').textContent = totalProduzido;
+      document.getElementById('totalDefeitos').textContent = totalDefeitos;
+      document.getElementById('taxaDefeito').textContent = taxaDefeito + '%';
+
+      // Criar gráfico
+      const ctx = document.getElementById('producaoChart').getContext('2d');
+      if (chart) chart.destroy();
+
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dados.map(d => d.hora),
+          datasets: [{
+            label: 'Produzido',
+            data: dados.map(d => d.produzido),
+            borderColor: 'rgb(59, 130, 246)',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            tension: 0.4
+          }, {
+            label: 'Defeitos',
+            data: dados.map(d => d.defeitos),
+            borderColor: 'rgb(239, 68, 68)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            tension: 0.4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function exportarPDF() {
+      const element = document.querySelector('.max-w-6xl');
+      html2pdf().from(element).save('industrack-pro.pdf');
+    }
+
+    function limparDados() {
+      document.getElementById('dataInput').value = '';
+      if (chart) chart.destroy();
+      document.getElementById('totalProduzido').textContent = '0';
+      document.getElementById('totalDefeitos').textContent = '0';
+      document.getElementById('taxaDefeito').textContent = '0%';
+    }
+
+    // Dados de exemplo ao carregar
+    window.onload = () => {
+      document.getElementById('dataInput').value = JSON.stringify([
+        {hora: "08:00", produzido: 120, defeitos: 5},
+        {hora: "09:00", produzido: 150, defeitos: 3},
+        {hora: "10:00", produzido: 130, defeitos: 7},
+        {hora: "11:00", produzido: 180, defeitos: 2}
+      ], null, 2);
+      atualizarDashboard();
+    };
+  </script>
+</body>
 </html>
